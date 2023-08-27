@@ -8,6 +8,7 @@ use glium::{implement_vertex, uniform, Surface};
 use log::warn;
 use simple_logger::SimpleLogger;
 
+use gltr::gl::shader::{to_fragment_shader_source, VERTEX_SHADER_SOURCE};
 use gltr::gl::texture::create_from;
 
 #[derive(Parser, Debug)]
@@ -78,99 +79,26 @@ fn main() {
         format!("{}.glsl", args.shader)
     };
 
-    let vertex_shader_src = r#"
-    #version 140
-    in vec2 position;
-    out vec2 uv;
-    void main() {
-        gl_Position = vec4(position, 0.0, 1.0);
-        uv = vec2(0.5, 0.5) * (position + vec2(1.0, 1.0)); // Modify UV calculation
-    }
-"#;
-
     let shader_code = std::fs::read_to_string(shader_path).expect("Could not read shader file");
 
-    let fragment_shader_src = match args.mode.as_str() {
-        "contain" => format!(
-            r#"
-        #version 140
-        uniform sampler2D from, to;
-        uniform float progress;
-        uniform float ratio, _fromR, _toR;
-        in vec2 uv;
-        out vec4 color;
+    let mode = match gltr::gl::shader::Mode::new(&args.mode) {
+        Ok(mode) => mode,
+        Err(err) => {
+            warn!("Could not create mode: {}", err);
+            return;
+        }
+    };
 
-        vec4 getFromColor(vec2 uv) {{
-            return texture(from, .5 + (uv - .5) * vec2(max(ratio / _fromR, 1.), max(_fromR / ratio, 1.)));
-        }}
-
-        vec4 getToColor(vec2 uv) {{
-            return texture(to, .5 + (uv - .5) * vec2(max(ratio / _toR, 1.), max(_toR / ratio, 1.)));
-        }}
-
-        {}
-
-        void main() {{
-            color = transition(uv);
-        }}
-    "#,
-            shader_code
-        ),
-
-        "stretch" => format!(
-            r#"
-        #version 140
-        uniform sampler2D from, to;
-        uniform float progress;
-        in vec2 uv;
-        out vec4 color;
-
-        vec4 getFromColor(vec2 uv) {{
-            return texture(from, uv);
-        }}
-
-        vec4 getToColor(vec2 uv) {{
-            return texture(to, uv);
-        }}
-
-        {}
-
-        void main() {{
-            color = transition(uv);
-        }}
-    "#,
-            shader_code
-        ),
-
-        "cover" | _ => format!(
-            r#"
-        #version 140
-        uniform sampler2D from, to;
-        uniform float progress;
-        uniform float ratio, _fromR, _toR;
-        in vec2 uv;
-        out vec4 color;
-
-        vec4 getFromColor(vec2 uv) {{
-            return texture(from, .5 + (uv - .5) * vec2(min(ratio / _fromR, 1.), min(_fromR / ratio, 1.)));
-        }}
-
-        vec4 getToColor(vec2 uv) {{
-            return texture(to, .5 + (uv - .5) * vec2(min(ratio / _toR, 1.), min(_toR / ratio, 1.)));
-        }}
-
-        {}
-
-        void main() {{
-            color = transition(uv);
-        }}
-    "#,
-            shader_code
-        ),
+    let fragment_shader_src = match to_fragment_shader_source(mode, &shader_code) {
+        Ok(src) => src,
+        Err(err) => {
+            warn!("Could not create fragment shader: {}", err);
+            return;
+        }
     };
 
     let program =
-        glium::Program::from_source(&display, vertex_shader_src, &fragment_shader_src, None)
+        glium::Program::from_source(&display, VERTEX_SHADER_SOURCE, &fragment_shader_src, None)
             .unwrap();
 
     // Create a full-screen quad
@@ -210,7 +138,7 @@ fn main() {
     frame
         .draw(
             &vertex_buffer,
-            &indices,
+            indices,
             &program,
             &uniforms,
             &Default::default(),

@@ -9,3 +9,5 @@ edition = "2021"
 clap = { version = "4.3.19", features = ["derive"] }
 image = "0.24.6"
 glium = "0.32.1"
+log = "0.4.20"
+simple_logger = "4.2.0"

@@ -5,6 +5,10 @@ use clap::Parser;
 use glium::index::PrimitiveType;
 use glium::VertexBuffer;
 use glium::{implement_vertex, uniform, Surface};
+use log::warn;
+use simple_logger::SimpleLogger;
+
+use gltr::gl::texture::create_from;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -33,6 +37,8 @@ struct Vertex {
 implement_vertex!(Vertex, position);
 
 fn main() {
+    SimpleLogger::new().init().unwrap();
+
     let args = Args::parse();
 
     let wb = glium::glutin::window::WindowBuilder::new()
@@ -43,24 +49,28 @@ fn main() {
     let cb = glium::glutin::ContextBuilder::new().with_srgb(true);
     let events_loop = glium::glutin::event_loop::EventLoop::new();
 
-    let display = glium::Display::new(wb, cb, &events_loop).unwrap();
+    let display = match glium::Display::new(wb, cb, &events_loop) {
+        Ok(display) => display,
+        Err(err) => {
+            warn!("Could not create display: {}", err);
+            return;
+        }
+    };
 
-    // Load the images
-    let image1 = image::open(&args.from).unwrap().to_rgba8();
-    let image2 = image::open(&args.to).unwrap().to_rgba8();
-
-    // Get the dimensions and convert the images to RawImage2d
-    let dimensions1 = image1.dimensions();
-    let image1 =
-        glium::texture::RawImage2d::from_raw_rgba_reversed(&image1.into_raw(), dimensions1);
-
-    let dimensions2 = image2.dimensions();
-    let image2 =
-        glium::texture::RawImage2d::from_raw_rgba_reversed(&image2.into_raw(), dimensions2);
-
-    // Create sRGB textures from the images
-    let texture1 = glium::texture::SrgbTexture2d::new(&display, image1).unwrap();
-    let texture2 = glium::texture::SrgbTexture2d::new(&display, image2).unwrap();
+    let (texture1, dimensions1) = match create_from(args.from, &display) {
+        Ok((texture, dim)) => (texture, dim),
+        Err(err) => {
+            warn!("Could not load from image: {}", err);
+            return;
+        }
+    };
+    let (texture2, dimensions2) = match create_from(args.to, &display) {
+        Ok((texture, dim)) => (texture, dim),
+        Err(err) => {
+            warn!("Could not load to image: {}", err);
+            return;
+        }
+    };
 
     let shader_path = if args.shader.ends_with(".glsl") {
         args.shader
